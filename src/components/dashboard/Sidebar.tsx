@@ -63,6 +63,9 @@ export function Sidebar({ active, onNavigate, accountType, name, email, counts }
             <div className="foot-email">{email}</div>
           </div>
         </div>
+        <a className="nav-item" href="/logout" style={{ marginTop: 4, color: 'var(--tm-fg-muted)', fontSize: '0.85rem' }}>
+          Log out
+        </a>
       </div>
     </aside>
   );
