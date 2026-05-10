@@ -308,7 +308,7 @@ export default function ApplicantDashboard() {
   const loadQuestions = useCallback(async () => {
     if (!candidateId) return;
     try {
-      const data = await api.get<Question[]>(`/questions/?candidate_id=${candidateId}`);
+      const data = await api.get<Question[]>(`/questions/mine`);
       setQuestions(data.filter(q => !q.resolved));
     } catch {
       // none

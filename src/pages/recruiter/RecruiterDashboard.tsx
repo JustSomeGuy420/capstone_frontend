@@ -203,7 +203,7 @@ export default function RecruiterDashboard() {
 
   const loadRankings = useCallback(async (jobId: number) => {
     try {
-      const data = await api.get<CandidateRank[]>(`/matches/rankings?job_id=${jobId}`);
+      const data = await api.get<CandidateRank[]>(`/jobs/${jobId}/rankings`);
       setRankings(prev => ({ ...prev, [jobId]: data }));
     } catch {
       // none
