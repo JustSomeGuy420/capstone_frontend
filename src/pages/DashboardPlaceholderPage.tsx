@@ -9,7 +9,7 @@ export default function DashboardPlaceholderPage() {
       <div className="container">
         <section className="panel placeholder-card">
           <span className="eyebrow">Signed in</span>
-          <h1>{userName ?? ‘Dashboard’}</h1>
+          <h1>{userName ?? 'Dashboard'}</h1>
           <p className="muted copy">Signed in as {userEmail}. This route is reserved for the dashboard.</p>
           <div className="placeholder-box">
             <h2>Dashboard placeholder</h2>
