@@ -159,12 +159,9 @@ function Rankings({ rows, onExplain }: { rows: CandidateRank[]; onExplain: (r: C
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.rank} className={r.knockout_failed ? 'knockout' : ''}>
+            <tr key={r.rank}>
               <td className="rank-cell">{r.rank}</td>
-              <td>
-                <span className="cand-name">{r.candidate_name}</span>
-                {r.knockout_failed && <span className="knockout-label">Knockout failed</span>}
-              </td>
+              <td><span className="cand-name">{r.candidate_name}</span></td>
               <td className="num">{r.match_score.toFixed(2)}</td>
               <td className="num">{r.coverage.toFixed(2)}</td>
               <td className="num"><strong>{r.job_score.toFixed(2)}</strong></td>
@@ -206,7 +203,7 @@ export default function RecruiterDashboard() {
   const loadRankings = useCallback(async (jobId: number) => {
     setRankingsError('');
     try {
-      const data = await api.get<CandidateRank[]>(`/jobs/${jobId}/rankings?exclude_knockouts=false`);
+      const data = await api.get<CandidateRank[]>(`/jobs/${jobId}/rankings`);
       setRankings(prev => ({ ...prev, [jobId]: data }));
     } catch (err) {
       setRankingsError(err instanceof Error ? err.message : 'Failed to load rankings.');
@@ -242,7 +239,7 @@ export default function RecruiterDashboard() {
   const firstName = name.split(' ')[0];
   const currentJob = jobs.find(j => j.job_id === activeJob);
   const currentRanks = activeJob ? (rankings[activeJob] ?? []) : [];
-  const totalStrong = Object.values(rankings).flat().filter(r => r.qualification_tier === 'strong_fit' && !r.knockout_failed).length;
+  const totalStrong = Object.values(rankings).flat().filter(r => r.qualification_tier === 'strong_fit').length;
 
   function handleNewJob(job: Job) {
     setJobs(prev => [job, ...prev]);
@@ -416,12 +413,9 @@ export default function RecruiterDashboard() {
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <span className="score-chip">{Math.round(explainOf.match_score * 100)}% match</span>
             <Tier value={explainOf.qualification_tier} />
-            {explainOf.knockout_failed && <span className="tier low">Knockout failed</span>}
           </div>
           <p style={{ lineHeight: 1.7, margin: '0 0 8px', color: 'var(--tm-fg-1)' }}>
-            {explainOf.knockout_failed
-              ? `${explainOf.candidate_name} scored ${(explainOf.match_score * 100).toFixed(0)}% on overlapping competencies but failed a hard-required qualification, so this candidate is excluded from your shortlist. The job_score of ${explainOf.job_score.toFixed(2)} reflects the coverage penalty.`
-              : `${explainOf.candidate_name} covers ${(explainOf.coverage * 100).toFixed(0)}% of the role's competencies at or above the required level. Their match score of ${explainOf.match_score.toFixed(2)} weighted by coverage gives a job_score of ${explainOf.job_score.toFixed(2)}.`}
+            {explainOf.candidate_name} covers {(explainOf.coverage * 100).toFixed(0)}% of the role's competencies at or above the required level. Their match score of {explainOf.match_score.toFixed(2)} weighted by coverage gives a job_score of {explainOf.job_score.toFixed(2)}.
           </p>
         </Modal>
       )}

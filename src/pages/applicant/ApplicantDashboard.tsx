@@ -491,6 +491,7 @@ export default function ApplicantDashboard() {
             <Tier value={explainOf.qualification_tier} />
             <span style={{ color: 'var(--tm-fg-muted)', fontSize: 13 }}>{explainOf.company_name}</span>
           </div>
+
           <p style={{ lineHeight: 1.7, color: 'var(--tm-fg-1)', margin: '0 0 14px' }}>
             {explainOf.explanation ?? 'No explanation available yet.'}
           </p>
