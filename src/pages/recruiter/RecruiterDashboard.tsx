@@ -186,6 +186,8 @@ export default function RecruiterDashboard() {
   const [active, setActive] = useState('overview');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rankings, setRankings] = useState<Record<number, CandidateRank[]>>({});
+  const [rankingsError, setRankingsError] = useState<string>('');
+  const [rerunning, setRerunning] = useState(false);
   const [activeJob, setActiveJob] = useState<number | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [explainOf, setExplainOf] = useState<CandidateRank | null>(null);
@@ -202,13 +204,27 @@ export default function RecruiterDashboard() {
   }, [activeJob]);
 
   const loadRankings = useCallback(async (jobId: number) => {
+    setRankingsError('');
     try {
-      const data = await api.get<CandidateRank[]>(`/jobs/${jobId}/rankings`);
+      const data = await api.get<CandidateRank[]>(`/jobs/${jobId}/rankings?exclude_knockouts=false`);
       setRankings(prev => ({ ...prev, [jobId]: data }));
-    } catch {
-      // none
+    } catch (err) {
+      setRankingsError(err instanceof Error ? err.message : 'Failed to load rankings.');
     }
   }, []);
+
+  const rerunMatching = useCallback(async (jobId: number) => {
+    setRerunning(true);
+    try {
+      await api.post(`/matches/trigger/${jobId}`, {});
+      // Give the background task a moment then refresh
+      setTimeout(() => loadRankings(jobId), 3000);
+    } catch (err) {
+      setRankingsError(err instanceof Error ? err.message : 'Failed to trigger matching.');
+    } finally {
+      setRerunning(false);
+    }
+  }, [loadRankings]);
 
   useEffect(() => {
     api.get<MeResponse>('/users/me').then(me => {
@@ -309,7 +325,13 @@ export default function RecruiterDashboard() {
               sub={currentJob ? `Posted ${currentJob.created_at.slice(0, 10)}` : ''}
               actions={
                 <>
-                  <button className="btn secondary" onClick={() => activeJob && loadRankings(activeJob)}>Re-run matching</button>
+                  <button
+                    className="btn secondary"
+                    disabled={rerunning || !activeJob}
+                    onClick={() => activeJob && rerunMatching(activeJob)}
+                  >
+                    {rerunning ? 'Running...' : 'Re-run matching'}
+                  </button>
                 </>
               }
             />
@@ -328,9 +350,10 @@ export default function RecruiterDashboard() {
                   <div className="card-head">
                     <div className="card-title">
                       <h2>Ranked candidates</h2>
-                      <div className="card-sub">job_score = match_score x coverage. Knockout-failed candidates are kept for context but visually muted.</div>
+                      <div className="card-sub">job_score = match_score × coverage. Knockout-failed candidates are kept for context but visually muted.</div>
                     </div>
                   </div>
+                  {rankingsError && <p className="form-error" style={{ marginBottom: 12 }}>{rankingsError}</p>}
                   <Rankings rows={currentRanks} onExplain={setExplainOf} />
                 </div>
               </div>
