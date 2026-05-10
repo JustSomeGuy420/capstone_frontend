@@ -106,8 +106,44 @@ function CompetencyChart({ competencies }: { competencies: Competency[] }) {
 function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [resume, setResume] = useState<ResumeResponse | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [uploadDate, setUploadDate] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState(false);
   const [error, setError] = useState('');
+
+  // Check on mount if the user already has a resume
+  useEffect(() => {
+    api.get<ResumeResponse>('/resumes/me').then(r => {
+      setUploadDate(r.upload_date.slice(0, 10));
+    }).catch(() => {
+      // no resume yet
+    });
+  }, []);
+
+  // Poll for scored competencies after upload, then fire onUploaded
+  useEffect(() => {
+    if (!scoring) return;
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const profile = await api.get<CandidateProfile>('/users/me/competencies');
+        if (profile.competencies.length > 0) {
+          clearInterval(interval);
+          setScoring(false);
+          onUploaded();
+        }
+      } catch {
+        // not ready yet
+      }
+      if (attempts >= 20) {
+        clearInterval(interval);
+        setScoring(false);
+        onUploaded();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [scoring, onUploaded]);
 
   async function handleFile(file: File) {
     if (!file) return;
@@ -126,13 +162,36 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
         throw new Error(body.detail ?? `Upload failed (${res.status})`);
       }
       const data: ResumeResponse = await res.json();
-      setResume(data);
-      onUploaded();
+      setUploadDate(data.upload_date.slice(0, 10));
+      setReplacing(false);
+      setScoring(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed.');
     } finally {
       setUploading(false);
     }
+  }
+
+  // Resume exists and not actively scoring or replacing
+  if (uploadDate && !scoring && !replacing) {
+    return (
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">
+            <h2>Resume</h2>
+            <div className="card-sub">Your resume is on file and has been scored.</div>
+          </div>
+          <button className="btn secondary sm" onClick={() => setReplacing(true)}>Replace file</button>
+        </div>
+        <div className="uploaded-row">
+          <span className="file-ico">PDF</span>
+          <div className="file-meta">
+            <div className="file-name">Resume on file</div>
+            <div className="file-sub">Uploaded {uploadDate}</div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -142,12 +201,20 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
           <h2>Resume</h2>
           <div className="card-sub">PDF or Word, up to 10 MB. We'll score your competencies and match jobs automatically.</div>
         </div>
-        {resume && <button className="btn secondary sm" onClick={() => setResume(null)}>Replace file</button>}
+        {replacing && <button className="btn ghost sm" onClick={() => setReplacing(false)}>Cancel</button>}
       </div>
 
       {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
 
-      {!resume ? (
+      {scoring ? (
+        <div className="uploaded-row loading-pulse">
+          <span className="file-ico">PDF</span>
+          <div className="file-meta">
+            <div className="file-name">Scoring competencies...</div>
+            <div className="file-sub">Usually 10–30 seconds. Your matches will update automatically when done.</div>
+          </div>
+        </div>
+      ) : (
         <div
           className={`dropzone ${drag ? 'dragging' : ''}`}
           onDragOver={e => { e.preventDefault(); setDrag(true); }}
@@ -161,14 +228,6 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
           <button className="btn primary sm" disabled={uploading} onClick={e => e.stopPropagation()}>
             {uploading ? 'Uploading...' : 'Choose a file'}
           </button>
-        </div>
-      ) : (
-        <div className="uploaded-row loading-pulse">
-          <span className="file-ico">PDF</span>
-          <div className="file-meta">
-            <div className="file-name">Resume uploaded</div>
-            <div className="file-sub">Scoring competencies and matching jobs — usually 10–30 seconds.</div>
-          </div>
         </div>
       )}
     </div>
@@ -373,7 +432,7 @@ export default function ApplicantDashboard() {
                   <div className="stat-sub">Answer to refresh ranks</div>
                 </div>
               </div>
-              <ResumeUpload onUploaded={loadProfile} />
+              <ResumeUpload onUploaded={() => { loadProfile(); loadRecs(); }} />
               <Recommendations recs={recs.slice(0, 3)} onExplain={setExplainOf} />
             </div>
           </>
