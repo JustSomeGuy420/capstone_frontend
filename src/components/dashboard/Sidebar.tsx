@@ -1,5 +1,5 @@
 import type { AccountType } from '../../types/auth';
-import { IconHome, IconBriefcase, IconChart, IconQuestion, IconSparkles } from './Icons';
+import { IconHome, IconBriefcase, IconChart, IconQuestion, IconSparkles, IconSettings } from './Icons';
 
 type NavItem = {
   id: string;
@@ -26,12 +26,14 @@ export function Sidebar({ active, onNavigate, accountType, name, email, counts }
         { id: 'recommendations',  label: 'Recommendations',       icon: <IconBriefcase />, count: counts?.recs },
         { id: 'competencies',     label: 'My competencies',       icon: <IconChart /> },
         { id: 'questions',        label: 'Clarifying questions',  icon: <IconQuestion />, count: counts?.questions },
+        { id: 'settings',         label: 'Settings',              icon: <IconSettings /> },
       ]
     : [
         { id: 'overview',  label: 'Overview',             icon: <IconHome /> },
         { id: 'jobs',      label: 'My jobs',              icon: <IconBriefcase />, count: counts?.jobs },
         { id: 'post',      label: 'Post a job',           icon: <IconSparkles /> },
         { id: 'questions', label: 'Clarifying questions', icon: <IconQuestion />, count: counts?.questions },
+        { id: 'settings',  label: 'Settings',             icon: <IconSettings /> },
       ];
 
   return (

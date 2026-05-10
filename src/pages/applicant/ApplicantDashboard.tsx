@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
+import { userService } from '../../services/userService';
+import { resumeService, type ResumeResponse } from '../../services/resumeService';
+import { matchService, type Recommendation } from '../../services/matchService';
+import { questionService, type Question } from '../../services/questionService';
+import { profileService } from '../../services/profileService';
+import { jobService, type Job } from '../../services/jobService';
 import { Sidebar } from '../../components/dashboard/Sidebar';
 import { PageHead } from '../../components/dashboard/PageHead';
 import { Modal } from '../../components/dashboard/Modal';
@@ -8,7 +14,7 @@ import { Tier } from '../../components/dashboard/Tier';
 import { IconUpload } from '../../components/dashboard/Icons';
 import '../../styles/dashboard.css';
 
-// ---- API shapes ----
+// ---- Competency types (local only, sourced from userService endpoint) ----
 type Competency = {
   competency_id: number;
   competency_name: string;
@@ -20,40 +26,6 @@ type CandidateProfile = {
   candidate_id: number;
   tech_keywords: string[];
   competencies: Competency[];
-};
-
-type Recommendation = {
-  rank: number;
-  match_id: number;
-  job_id: number;
-  title: string;
-  company_name: string;
-  match_score: number;
-  recommendation_score: number;
-  qualification_tier: string;
-  knockout_failed: boolean;
-  explanation: string | null;
-  gap_profile: Record<string, { gap: number; required_level: number; candidate_level: number }> | null;
-};
-
-type Question = {
-  question_id: number;
-  element_id: string;
-  competency_name: string;
-  reason: string;
-  question_text: string;
-  answer_text: string | null;
-  resolved: boolean;
-};
-
-type ResumeResponse = {
-  resume_id: number;
-  candidate_id: number;
-  upload_date: string;
-};
-
-type MeResponse = {
-  candidate_id?: number;
 };
 
 // ---- Competency chart ----
@@ -89,9 +61,9 @@ function CompetencyChart({ competencies }: { competencies: Competency[] }) {
                 <div className="bar-row" key={c.competency_id}>
                   <div className="bar-label" title={c.competency_name}>{c.competency_name}</div>
                   <div className="bar-track">
-                    <div className="bar-fill" style={{ width: `${Math.round((c.level_score ?? 0))}%` }} />
+                    <div className="bar-fill" style={{ width: `${Math.round(c.level_score ?? 0)}%` }} />
                   </div>
-                  <div className="bar-value">{((c.level_score ?? 0) / 100).toFixed(2)}</div>
+                  <div className="bar-value">{Math.round(c.level_score ?? 0)}</div>
                 </div>
               ))}
             </div>
@@ -111,16 +83,12 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
   const [replacing, setReplacing] = useState(false);
   const [error, setError] = useState('');
 
-  // Check on mount if the user already has a resume
   useEffect(() => {
-    api.get<ResumeResponse>('/resumes/me').then(r => {
-      setUploadDate(r.upload_date.slice(0, 10));
-    }).catch(() => {
-      // no resume yet
-    });
+    resumeService.getMyResume().then(r => {
+      if (r) setUploadDate(r.upload_date.slice(0, 10));
+    }).catch(() => {});
   }, []);
 
-  // Poll for scored competencies after upload, then fire onUploaded
   useEffect(() => {
     if (!scoring) return;
     let attempts = 0;
@@ -149,19 +117,8 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
     if (!file) return;
     setUploading(true);
     setError('');
-    const form = new FormData();
-    form.append('file', file);
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/resumes/`,
-        { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? `Upload failed (${res.status})`);
-      }
-      const data: ResumeResponse = await res.json();
+      const data = await resumeService.uploadResume(file);
       setUploadDate(data.upload_date.slice(0, 10));
       setReplacing(false);
       setScoring(true);
@@ -172,7 +129,6 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
     }
   }
 
-  // Resume exists and not actively scoring or replacing
   if (uploadDate && !scoring && !replacing) {
     return (
       <div className="card">
@@ -235,13 +191,21 @@ function ResumeUpload({ onUploaded }: { onUploaded: () => void }) {
 }
 
 // ---- Recommendations ----
-function Recommendations({ recs, onExplain }: { recs: Recommendation[]; onExplain: (r: Recommendation) => void }) {
+function Recommendations({
+  recs,
+  onViewJob,
+  onExplain,
+}: {
+  recs: Recommendation[];
+  onViewJob: (r: Recommendation) => void;
+  onExplain: (r: Recommendation) => void;
+}) {
   return (
     <div className="card">
       <div className="card-head">
         <div className="card-title">
           <h2>Top job matches</h2>
-          <div className="card-sub">Ranked by combined fit and coverage. Click to see the per-role breakdown.</div>
+          <div className="card-sub">Ranked by combined fit and coverage. Click a job title to view its details.</div>
         </div>
       </div>
       {recs.length === 0 ? (
@@ -257,17 +221,23 @@ function Recommendations({ recs, onExplain }: { recs: Recommendation[]; onExplai
             <div className="match-row" key={r.match_id}>
               <div className="match-rank">{r.rank}</div>
               <div className="match-info">
-                <h3>{r.title}</h3>
+                <button
+                  className="btn ghost sm"
+                  style={{ padding: '2px 4px', fontWeight: 800, fontSize: '1rem', textAlign: 'left' }}
+                  onClick={() => onViewJob(r)}
+                >
+                  {r.title}
+                </button>
                 <div className="match-meta">
-                  <span>{r.company_name}</span>
+                  <span style={{ color: 'var(--tm-fg-muted)', fontSize: 13 }}>{r.company_name}</span>
                   <span className="dot" />
                   <Tier value={r.qualification_tier} />
                   <span className="dot" />
-                  <span className="score-chip">{Math.round(r.match_score * 100)}%</span>
+                  <span className="score-chip">{Math.round(r.recommendation_score * 100)}%</span>
                 </div>
               </div>
               <div className="match-actions">
-                <button className="btn secondary sm" onClick={() => onExplain(r)}>Explain this match</button>
+                <button className="btn secondary sm" onClick={() => onExplain(r)}>Explain</button>
               </div>
             </div>
           ))}
@@ -309,7 +279,7 @@ function QuestionCard({ q, onAnswer }: { q: Question; onAnswer: (id: number) => 
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      await api.post(`/questions/${q.question_id}/answer`, { answer_text: answer });
+      await questionService.answerQuestion(q.question_id, answer);
       onAnswer(q.question_id);
     } finally {
       setSubmitting(false);
@@ -335,15 +305,234 @@ function QuestionCard({ q, onAnswer }: { q: Question; onAnswer: (id: number) => 
   );
 }
 
+// ---- Settings ----
+function Settings({
+  userId,
+  initialFName,
+  initialLName,
+  initialEmail,
+  onAccountDeleted,
+}: {
+  userId: number;
+  initialFName: string;
+  initialLName: string;
+  initialEmail: string;
+  onAccountDeleted: () => void;
+}) {
+  const [fName, setFName] = useState(initialFName);
+  const [lName, setLName] = useState(initialLName);
+  const [email, setEmail] = useState(initialEmail);
+  const [profileMsg, setProfileMsg] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  const [myResume, setMyResume] = useState<ResumeResponse | null>(null);
+  const [deletingResume, setDeletingResume] = useState(false);
+
+  useEffect(() => {
+    resumeService.getMyResume().then(r => setMyResume(r)).catch(() => {});
+  }, []);
+
+  async function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileMsg('');
+    setProfileError('');
+    try {
+      await userService.updateUser(userId, { f_name: fName, l_name: lName, email });
+      setProfileMsg('Profile updated.');
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match.'); return; }
+    setSavingPassword(true);
+    setPasswordMsg('');
+    setPasswordError('');
+    try {
+      await userService.changePassword(oldPassword, newPassword);
+      setPasswordMsg('Password changed.');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Failed to change password.');
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
+  async function handleDeleteResume() {
+    if (!myResume) return;
+    if (!confirm('Delete your resume? This will remove your competency scores and match data.')) return;
+    setDeletingResume(true);
+    try {
+      await resumeService.deleteResume(myResume.resume_id);
+      setMyResume(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete resume.');
+    } finally {
+      setDeletingResume(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!confirm('Permanently delete your account? This cannot be undone.')) return;
+    try {
+      await userService.deleteUser(userId);
+      onAccountDeleted();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete account.');
+    }
+  }
+
+  return (
+    <div className="stack">
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">
+            <h2>Profile</h2>
+            <div className="card-sub">Update your name and email address.</div>
+          </div>
+        </div>
+        <form className="stack-sm" onSubmit={handleSaveProfile}>
+          <div className="grid-2">
+            <div className="field">
+              <label>First name</label>
+              <input value={fName} onChange={e => setFName(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label>Last name</label>
+              <input value={lName} onChange={e => setLName(e.target.value)} required />
+            </div>
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          {profileError && <p className="form-error">{profileError}</p>}
+          {profileMsg && <p style={{ color: 'var(--tm-tier-strong)', fontWeight: 600 }}>{profileMsg}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn primary sm" type="submit" disabled={savingProfile}>
+              {savingProfile ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">
+            <h2>Password</h2>
+            <div className="card-sub">Leave blank to keep your current password.</div>
+          </div>
+        </div>
+        <form className="stack-sm" onSubmit={handleChangePassword}>
+          <div className="field">
+            <label>Current password</label>
+            <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>New password</label>
+            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>Confirm new password</label>
+            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+          </div>
+          {passwordError && <p className="form-error">{passwordError}</p>}
+          {passwordMsg && <p style={{ color: 'var(--tm-tier-strong)', fontWeight: 600 }}>{passwordMsg}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="btn primary sm"
+              type="submit"
+              disabled={savingPassword || !oldPassword || !newPassword || newPassword !== confirmPassword}
+            >
+              {savingPassword ? 'Changing...' : 'Change password'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">
+            <h2>Resume</h2>
+            <div className="card-sub">Deleting your resume removes your competency scores and all match data.</div>
+          </div>
+        </div>
+        {myResume ? (
+          <div className="uploaded-row">
+            <span className="file-ico">PDF</span>
+            <div className="file-meta">
+              <div className="file-name">Resume on file</div>
+              <div className="file-sub">Uploaded {myResume.upload_date.slice(0, 10)}</div>
+            </div>
+            <button
+              className="btn danger sm"
+              onClick={handleDeleteResume}
+              disabled={deletingResume}
+            >
+              {deletingResume ? 'Deleting...' : 'Delete resume'}
+            </button>
+          </div>
+        ) : (
+          <div className="uploaded-row">
+            <div className="file-meta">
+              <div className="file-name">No resume on file</div>
+              <div className="file-sub">Go to Overview to upload one.</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">
+            <h2>Danger zone</h2>
+            <div className="card-sub">Permanently deletes your account and all associated data.</div>
+          </div>
+        </div>
+        <button className="btn danger sm" onClick={handleDeleteAccount}>Delete account</button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Main dashboard ----
 export default function ApplicantDashboard() {
-  const { userName, userEmail, accountType } = useAuth();
+  const { userName, userEmail, accountType, signOutUser } = useAuth();
   const [active, setActive] = useState('overview');
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [explainOf, setExplainOf] = useState<Recommendation | null>(null);
   const [candidateId, setCandidateId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [userFName, setUserFName] = useState('');
+  const [userLName, setUserLName] = useState('');
+  const [userEmail2, setUserEmail2] = useState('');
+
+  // Explain modal
+  const [explainOf, setExplainOf] = useState<Recommendation | null>(null);
+  const [explanationText, setExplanationText] = useState<string | null>(null);
+  const [explanationLoading, setExplanationLoading] = useState(false);
+
+  // Job detail modal
+  const [viewingJob, setViewingJob] = useState<Recommendation | null>(null);
+  const [jobDetail, setJobDetail] = useState<Job | null>(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -355,30 +544,50 @@ export default function ApplicantDashboard() {
   }, []);
 
   const loadRecs = useCallback(async () => {
-    if (!candidateId) return;
     try {
-      const data = await api.get<Recommendation[]>(`/matches/recommendations`);
+      const data = await matchService.getRecommendations(20);
       setRecs(data);
     } catch {
       // no recs yet
     }
-  }, [candidateId]);
+  }, []);
 
   const loadQuestions = useCallback(async () => {
-    if (!candidateId) return;
     try {
-      const data = await api.get<Question[]>(`/questions/mine`);
+      const data = await questionService.getMyQuestions();
       setQuestions(data.filter(q => !q.resolved));
     } catch {
       // none
     }
-  }, [candidateId]);
+  }, []);
 
   useEffect(() => {
-    api.get<MeResponse>('/users/me').then(me => {
+    userService.getMe().then(me => {
       if (me.candidate_id) setCandidateId(me.candidate_id);
+      setUserId(me.user_id);
+      setUserFName(me.f_name);
+      setUserLName(me.l_name);
+      setUserEmail2(me.email);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!explainOf) { setExplanationText(null); return; }
+    setExplanationLoading(true);
+    matchService.explainMatch(explainOf.match_id)
+      .then(r => setExplanationText(r.explanation))
+      .catch(() => setExplanationText(null))
+      .finally(() => setExplanationLoading(false));
+  }, [explainOf]);
+
+  useEffect(() => {
+    if (!viewingJob) { setJobDetail(null); return; }
+    setJobDetailLoading(true);
+    jobService.getJob(viewingJob.job_id)
+      .then(j => setJobDetail(j))
+      .catch(() => setJobDetail(null))
+      .finally(() => setJobDetailLoading(false));
+  }, [viewingJob]);
 
   useEffect(() => {
     loadProfile();
@@ -394,6 +603,11 @@ export default function ApplicantDashboard() {
   const name = userName ?? 'Account';
   const email = userEmail ?? '';
   const firstName = name.split(' ')[0];
+
+  async function handleAccountDeleted() {
+    await signOutUser();
+    window.location.href = '/';
+  }
 
   return (
     <div className="app-shell">
@@ -417,8 +631,8 @@ export default function ApplicantDashboard() {
             <div className="stack">
               <div className="stats-row">
                 <div className="stat-block">
-                  <div className="stat-label">Top match score</div>
-                  <div className="stat-value">{recs[0] ? `${Math.round(recs[0].match_score * 100)}%` : '--'}</div>
+                  <div className="stat-label">Best recommendation</div>
+                  <div className="stat-value">{recs[0] ? `${Math.round(recs[0].recommendation_score * 100)}%` : '--'}</div>
                   <div className="stat-sub">{recs[0]?.title ?? 'No matches yet'}</div>
                 </div>
                 <div className="stat-block">
@@ -433,7 +647,11 @@ export default function ApplicantDashboard() {
                 </div>
               </div>
               <ResumeUpload onUploaded={() => { loadProfile(); loadRecs(); }} />
-              <Recommendations recs={recs.slice(0, 3)} onExplain={setExplainOf} />
+              <Recommendations
+                recs={recs.slice(0, 3)}
+                onExplain={setExplainOf}
+                onViewJob={setViewingJob}
+              />
             </div>
           </>
         )}
@@ -444,9 +662,9 @@ export default function ApplicantDashboard() {
               eyebrow="Job matches"
               title="All recommendations"
               sub="Ranked by fit score weighted by competency coverage."
-              actions={<button className="btn secondary" onClick={loadRecs}>Re-run matching</button>}
+              actions={<button className="btn secondary" onClick={loadRecs}>Refresh</button>}
             />
-            <Recommendations recs={recs} onExplain={setExplainOf} />
+            <Recommendations recs={recs} onExplain={setExplainOf} onViewJob={setViewingJob} />
           </>
         )}
 
@@ -474,41 +692,108 @@ export default function ApplicantDashboard() {
             />
           </>
         )}
+
+        {active === 'settings' && userId !== null && (
+          <>
+            <PageHead
+              eyebrow="Account"
+              title="Settings"
+              sub="Manage your profile, password, resume, and account."
+            />
+            <Settings
+              userId={userId}
+              initialFName={userFName}
+              initialLName={userLName}
+              initialEmail={userEmail2}
+              onAccountDeleted={handleAccountDeleted}
+            />
+          </>
+        )}
       </main>
 
+      {/* Explain modal */}
       {explainOf && (
         <Modal
           title={`Why this matches — ${explainOf.title}`}
           onClose={() => setExplainOf(null)}
-          footer={
-            <>
-              <button className="btn ghost" onClick={() => setExplainOf(null)}>Close</button>
-            </>
-          }
+          footer={<button className="btn ghost" onClick={() => setExplainOf(null)}>Close</button>}
         >
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="score-chip">{Math.round(explainOf.match_score * 100)}% match</span>
+            <span className="score-chip">{Math.round(explainOf.recommendation_score * 100)}% recommendation</span>
             <Tier value={explainOf.qualification_tier} />
             <span style={{ color: 'var(--tm-fg-muted)', fontSize: 13 }}>{explainOf.company_name}</span>
           </div>
-
-          <p style={{ lineHeight: 1.7, color: 'var(--tm-fg-1)', margin: '0 0 14px' }}>
-            {explainOf.explanation ?? 'No explanation available yet.'}
+          <p style={{ lineHeight: 1.7, color: 'var(--tm-fg-1)', margin: '0 0 14px', whiteSpace: 'pre-line' }}>
+            {explanationLoading ? 'Generating explanation…' : (explanationText ?? 'No explanation available.')}
           </p>
-          {explainOf.gap_profile && Object.keys(explainOf.gap_profile).length > 0 && (
-            <div className="chart-cat" style={{ padding: 14 }}>
-              <h4>Gaps detected</h4>
-              {Object.entries(explainOf.gap_profile).map(([k, v]) => (
-                <div className="bar-row" key={k}>
-                  <div className="bar-label">{k}</div>
-                  <div className="bar-track">
-                    <div className="bar-fill gap" style={{ width: `${Math.round(v.candidate_level * 100)}%` }} />
+          {explainOf.gap_profile && (() => {
+            const gaps = Object.entries(explainOf.gap_profile.scored).filter(([, v]) => v.gap > 0);
+            return gaps.length > 0 ? (
+              <div className="chart-cat" style={{ padding: 14 }}>
+                <h4>Gaps detected</h4>
+                {gaps.map(([k, v]) => (
+                  <div className="bar-row" key={k}>
+                    <div className="bar-label">{v.name}</div>
+                    <div className="bar-track">
+                      <div className="bar-fill gap" style={{ width: `${Math.round(v.candidate_level)}%` }} />
+                    </div>
+                    <div className="bar-value">-{v.gap.toFixed(2)}</div>
                   </div>
-                  <div className="bar-value">-{v.gap.toFixed(2)}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : null;
+          })()}
+        </Modal>
+      )}
+
+      {/* Job detail modal */}
+      {viewingJob && (
+        <Modal
+          title={viewingJob.title}
+          onClose={() => setViewingJob(null)}
+          footer={<button className="btn ghost" onClick={() => setViewingJob(null)}>Close</button>}
+        >
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="score-chip">{Math.round(viewingJob.recommendation_score * 100)}% match</span>
+            <Tier value={viewingJob.qualification_tier} />
+            <span style={{ color: 'var(--tm-fg-muted)', fontSize: 13 }}>{viewingJob.company_name}</span>
+          </div>
+
+          {jobDetailLoading ? (
+            <p style={{ color: 'var(--tm-fg-muted)' }}>Loading…</p>
+          ) : jobDetail ? (
+            <p style={{ margin: '0 0 20px', lineHeight: 1.7, color: 'var(--tm-fg-1)', whiteSpace: 'pre-wrap' }}>
+              {jobDetail.description}
+            </p>
+          ) : (
+            <p style={{ color: 'var(--tm-fg-muted)', marginBottom: 20 }}>Could not load job description.</p>
           )}
+
+          {/* Other matched jobs from same employer */}
+          {(() => {
+            const others = recs.filter(r => r.employer_id === viewingJob.employer_id && r.job_id !== viewingJob.job_id);
+            if (others.length === 0) return null;
+            return (
+              <div style={{ borderTop: '1px solid var(--tm-line)', paddingTop: 16 }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--tm-fg-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Other matched jobs from {viewingJob.company_name}
+                </h4>
+                <div className="match-list">
+                  {others.map(r => (
+                    <div className="match-row" key={r.match_id} style={{ cursor: 'pointer' }} onClick={() => setViewingJob(r)}>
+                      <div className="match-info">
+                        <h3 style={{ color: 'var(--tm-blue)' }}>{r.title}</h3>
+                        <div className="match-meta">
+                          <span className="score-chip">{Math.round(r.recommendation_score * 100)}%</span>
+                          <Tier value={r.qualification_tier} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </Modal>
       )}
     </div>
