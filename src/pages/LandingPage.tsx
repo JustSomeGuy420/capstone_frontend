@@ -1,29 +1,5 @@
 import { Link } from 'react-router-dom';
 
-const testimonials = [
-  {
-    name: 'Maya Roberts',
-    role: 'Frontend candidate',
-    image: 'https://randomuser.me/api/portraits/women/44.jpg',
-    quote:
-      'I finally understood which skills were helping my score and which gaps were holding me back.',
-  },
-  {
-    name: 'Devon Clarke',
-    role: 'Hiring lead',
-    image: 'https://randomuser.me/api/portraits/men/32.jpg',
-    quote:
-      'Instead of guessing, I could review ranked candidates with a readable explanation of the fit.',
-  },
-  {
-    name: 'Lina Grant',
-    role: 'Graduate applicant',
-    image: 'https://randomuser.me/api/portraits/women/68.jpg',
-    quote:
-      'The feedback made the process feel fair. I knew why one role matched better than another.',
-  },
-];
-
 export default function LandingPage() {
   return (
     <main className="page-shell">
@@ -47,7 +23,7 @@ export default function LandingPage() {
                 Create account
               </Link>
               <Link className="button secondary" to="/sign-in">
-                Continue to sign in
+                Sign in
               </Link>
             </div>
           </div>
@@ -67,28 +43,28 @@ export default function LandingPage() {
 
             <div className="visual-grid">
               <div className="visual-card profile-card">
-                <div className="avatar soft">AJ</div>
+                <div className="avatar soft">TM</div>
                 <div>
-                  <strong>Alex Johnson</strong>
-                  <p>Senior Frontend Engineer</p>
+                  <strong>Candidate profile</strong>
+                  <p>Competency-based scoring</p>
                 </div>
                 <div className="meter">
                   <span />
                 </div>
                 <div className="pill-row">
-                  <span className="mini-pill">React</span>
-                  <span className="mini-pill">TypeScript</span>
-                  <span className="mini-pill">UI</span>
+                  <span className="mini-pill">Skills</span>
+                  <span className="mini-pill">Experience</span>
+                  <span className="mini-pill">Fit</span>
                 </div>
               </div>
 
               <div className="visual-card stat-card">
-                <strong>24 matches</strong>
-                <p>Updated this week</p>
+                <strong>Ranked matches</strong>
+                <p>Sorted by fit score</p>
               </div>
 
               <div className="visual-card stat-card">
-                <strong>Feedback</strong>
+                <strong>Gap analysis</strong>
                 <p>Strengths and gaps shown clearly</p>
               </div>
             </div>
@@ -108,8 +84,8 @@ export default function LandingPage() {
           <article className="panel feature-card">
             <h2>Transparent ranking and feedback</h2>
             <p className="muted copy">
-              The platform is meant to explain why a candidate matched, where
-              they ranked, and what strengths or gaps influenced that result.
+              The platform explains why a candidate matched, where they ranked,
+              and what strengths or gaps influenced that result.
             </p>
           </article>
 
@@ -168,38 +144,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="section-block">
-          <div className="section-heading inside-container">
-            <span className="eyebrow">Testimonials</span>
-            <h2>What people say after using it</h2>
-            <p className="muted copy">
-              The platform is designed to make job matching feel less confusing
-              by showing where someone fits, where they fall short, and why a
-              recommendation appears in the first place.
-            </p>
-          </div>
-
-          <div className="three-col-grid">
-            {testimonials.map((item) => (
-              <article className="panel testimonial-card" key={item.name}>
-                <div className="testimonial-head">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="testimonial-avatar"
-                  />
-                  <div className="testimonial-meta">
-                    <strong>{item.name}</strong>
-                    <p className="muted small">{item.role}</p>
-                  </div>
-                </div>
-
-                <p className="copy testimonial-copy">“{item.quote}”</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
         <section className="panel section-block">
           <div className="section-heading">
             <span className="eyebrow">Why it matters</span>
@@ -234,25 +178,24 @@ export default function LandingPage() {
           </div>
         </section>
 
-
-
         <section className="panel cta-banner">
           <div className="cta-banner-copy">
-            <span className="eyebrow">Start here</span>
-            <h2>Build a verified account and continue to the shared app.</h2>
+            <span className="eyebrow">Get started</span>
+            <h2>Create an account and start matching.</h2>
             <p className="muted copy">
-              Sign up, verify your email, and then continue to the app route your teammate will complete later.
+              Sign up as a candidate to upload your resume and track job matches,
+              or as a recruiter to post roles and review ranked applicants.
             </p>
           </div>
 
           <div className="cta-banner-actions">
             <Link className="button primary cta-button" to="/sign-up">
-            Get started
+              Create account
             </Link>
             <Link className="button secondary cta-button" to="/sign-in">
-            I already have an account
+              I already have an account
             </Link>
-            </div>
+          </div>
         </section>
       </div>
     </main>

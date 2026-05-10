@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppHeader } from './components/AppHeader';
 import LandingPage from './pages/LandingPage';
@@ -8,14 +9,20 @@ import DashboardPlaceholderPage from './pages/DashboardPlaceholderPage';
 import LogoutPage from './pages/LogoutPage';
 import NotFoundPage from './pages/NotFoundPage';
 
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (isAuthenticated) return <Navigate to="/app" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <div className="app-root">
-      <AppHeader />
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/sign-in" element={<SignInPage />} />
-        <Route path="/sign-up" element={<SignUpPage />} />
+        <Route path="/" element={<PublicRoute><AppHeader /><LandingPage /></PublicRoute>} />
+        <Route path="/sign-in" element={<PublicRoute><AppHeader /><SignInPage /></PublicRoute>} />
+        <Route path="/sign-up" element={<PublicRoute><AppHeader /><SignUpPage /></PublicRoute>} />
         <Route
           path="/app"
           element={
