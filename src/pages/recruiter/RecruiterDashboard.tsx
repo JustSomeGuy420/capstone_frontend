@@ -159,9 +159,12 @@ function Rankings({ rows, onExplain }: { rows: CandidateRank[]; onExplain: (r: C
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.rank}>
+            <tr key={r.rank} className={r.knockout_failed ? 'knockout' : ''}>
               <td className="rank-cell">{r.rank}</td>
-              <td><span className="cand-name">{r.candidate_name}</span></td>
+              <td>
+                <span className="cand-name">{r.candidate_name}</span>
+                {r.knockout_failed && <span className="knockout-label">Knockout</span>}
+              </td>
               <td className="num">{r.match_score.toFixed(2)}</td>
               <td className="num">{r.coverage.toFixed(2)}</td>
               <td className="num"><strong>{r.job_score.toFixed(2)}</strong></td>
@@ -413,9 +416,11 @@ export default function RecruiterDashboard() {
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <span className="score-chip">{Math.round(explainOf.match_score * 100)}% match</span>
             <Tier value={explainOf.qualification_tier} />
+            {explainOf.knockout_failed && <span className="tier low">Knockout</span>}
           </div>
           <p style={{ lineHeight: 1.7, margin: '0 0 8px', color: 'var(--tm-fg-1)' }}>
             {explainOf.candidate_name} covers {(explainOf.coverage * 100).toFixed(0)}% of the role's competencies at or above the required level. Their match score of {explainOf.match_score.toFixed(2)} weighted by coverage gives a job_score of {explainOf.job_score.toFixed(2)}.
+            {explainOf.knockout_failed && ' This candidate failed a hard-required qualification.'}
           </p>
         </Modal>
       )}
