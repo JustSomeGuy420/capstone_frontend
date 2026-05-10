@@ -6,114 +6,92 @@ import {
   useMemo,
   useState,
 } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-} from 'firebase/auth';
-import { auth } from '../lib/firebase';
-import type { AuthContextValue, SignUpPayload } from '../types/auth';
+import { api, setToken, clearToken } from '../lib/api';
+import type { AccountType, AuthContextValue, SignUpPayload } from '../types/auth';
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+type MeResponse = {
+  user_id: number;
+  f_name: string;
+  l_name: string;
+  email: string;
+  account_type: AccountType;
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
+  function applyUser(me: MeResponse) {
+    setUserName(`${me.f_name} ${me.l_name}`);
+    setUserEmail(me.email);
+    setAccountType(me.account_type);
+    setIsAuthenticated(true);
+  }
+
+  function clearUser() {
+    setUserName(null);
+    setUserEmail(null);
+    setAccountType(null);
+    setIsAuthenticated(false);
+  }
+
+  // On mount, rehydrate session from stored token
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(Boolean(user));
-      setUserName(user?.displayName ?? null);
-      setUserEmail(user?.email ?? null);
-      setIsEmailVerified(Boolean(user?.emailVerified));
-      setPendingEmail(user?.email && !user?.emailVerified ? user.email : null);
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
       setIsLoading(false);
-    });
+      return;
+    }
 
-    return unsubscribe;
+    api.get<MeResponse>('/users/me')
+      .then(applyUser)
+      .catch(() => clearToken())
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const signUp = useCallback(async ({ fullName, email, password, role, company }: SignUpPayload) => {
-    const credential = await createUserWithEmailAndPassword(auth, email, password);
-    const displayName = role === 'employer' && company ? `${fullName} · ${company}` : fullName;
-    await updateProfile(credential.user, { displayName });
-    await sendEmailVerification(credential.user, {
-      url: `${import.meta.env.VITE_APP_URL ?? 'http://localhost:5173'}/sign-in`,
-      handleCodeInApp: false,
+  const signUp = useCallback(async ({ firstName, lastName, email, password, accountType: type, companyName }: SignUpPayload) => {
+    await api.post('/auth/register', {
+      f_name: firstName,
+      l_name: lastName,
+      email,
+      password,
+      account_type: type,
+      company_name: companyName,
     });
-    setPendingEmail(email);
-    await signOut(auth);
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-    await credential.user.reload();
-    if (!credential.user.emailVerified) {
-      setPendingEmail(email);
-      await sendEmailVerification(credential.user, {
-        url: `${import.meta.env.VITE_APP_URL ?? 'http://localhost:5173'}/sign-in`,
-        handleCodeInApp: false,
-      });
-      throw new Error('Please verify your email before signing in. We sent a fresh verification link.');
-    }
-  }, []);
-
-  const resendVerification = useCallback(async () => {
-    if (!auth.currentUser) {
-      throw new Error('Sign in first to resend verification.');
-    }
-    await sendEmailVerification(auth.currentUser, {
-      url: `${import.meta.env.VITE_APP_URL ?? 'http://localhost:5173'}/sign-in`,
-      handleCodeInApp: false,
-    });
-    setPendingEmail(auth.currentUser.email);
-  }, []);
-
-  const refreshVerification = useCallback(async () => {
-    if (!auth.currentUser) return;
-    await auth.currentUser.reload();
-    setIsEmailVerified(Boolean(auth.currentUser.emailVerified));
+    const { access_token } = await api.post<{ access_token: string; token_type: string }>(
+      '/auth/login',
+      { email, password }
+    );
+    setToken(access_token);
+    const me = await api.get<MeResponse>('/users/me');
+    applyUser(me);
   }, []);
 
   const signOutUser = useCallback(async () => {
-    await signOut(auth);
-    setPendingEmail(null);
+    clearToken();
+    clearUser();
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       userName,
       userEmail,
+      accountType,
       isAuthenticated,
-      isEmailVerified,
       isLoading,
-      pendingEmail,
       signUp,
       signIn,
-      resendVerification,
-      refreshVerification,
       signOutUser,
     }),
-    [
-      userName,
-      userEmail,
-      isAuthenticated,
-      isEmailVerified,
-      isLoading,
-      pendingEmail,
-      signUp,
-      signIn,
-      resendVerification,
-      refreshVerification,
-      signOutUser,
-    ]
+    [userName, userEmail, accountType, isAuthenticated, isLoading, signUp, signIn, signOutUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

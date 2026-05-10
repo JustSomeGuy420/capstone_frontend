@@ -2,15 +2,17 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthCard } from '../components/AuthCard';
 import { useAuth } from '../context/AuthContext';
+import type { AccountType } from '../types/auth';
 
 export default function SignUpPage() {
   const navigate = useNavigate();
   const { signUp } = useAuth();
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [company, setCompany] = useState('');
-  const [role, setRole] = useState<'candidate' | 'employer'>('candidate');
+  const [companyName, setCompanyName] = useState('');
+  const [accountType, setAccountType] = useState<AccountType>('applicant');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -20,8 +22,8 @@ export default function SignUpPage() {
     setIsSubmitting(true);
 
     try {
-      await signUp({ fullName, email, password, role, company });
-      navigate('/verify-email');
+      await signUp({ firstName, lastName, email, password, accountType, companyName });
+      navigate('/sign-in');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account.');
     } finally {
@@ -30,31 +32,34 @@ export default function SignUpPage() {
   }
 
   return (
-    <AuthCard title="Create your account" subtitle="Register with a real email so Firebase can send a verification link before first login.">
+    <AuthCard title="Create your account" subtitle="Register to get started with Transparent Match.">
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
-          Full name
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          First name
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+        </label>
+        <label>
+          Last name
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
         </label>
         <label>
           Email address
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <div className="segmented-row">
-          <button type="button" className={role === 'candidate' ? 'segment active' : 'segment'} onClick={() => setRole('candidate')}>Candidate</button>
-          <button type="button" className={role === 'employer' ? 'segment active' : 'segment'} onClick={() => setRole('employer')}>Employer</button>
+          <button type="button" className={accountType === 'applicant' ? 'segment active' : 'segment'} onClick={() => setAccountType('applicant')}>Candidate</button>
+          <button type="button" className={accountType === 'recruiter' ? 'segment active' : 'segment'} onClick={() => setAccountType('recruiter')}>Employer</button>
         </div>
-        {role === 'employer' ? (
+        {accountType === 'recruiter' ? (
           <label>
             Company name
-            <input value={company} onChange={(e) => setCompany(e.target.value)} required={role === 'employer'} />
+            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
           </label>
         ) : null}
         <label>
           Password
           <input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
-        <p className="muted small">Use at least 8 characters. Firebase will handle the account and email verification flow.</p>
         {error ? <p className="form-error">{error}</p> : null}
         <button className="button primary full" disabled={isSubmitting}>{isSubmitting ? 'Creating account...' : 'Create account'}</button>
         <p className="muted small center">Already have an account? <Link to="/sign-in">Sign in</Link></p>

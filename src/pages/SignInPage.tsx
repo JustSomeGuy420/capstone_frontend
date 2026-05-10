@@ -29,7 +29,7 @@ export default function SignInPage() {
   }
 
   return (
-    <AuthCard title="Welcome back" subtitle="Sign in only after you have clicked the verification link Firebase sent to your email.">
+    <AuthCard title="Welcome back" subtitle="Sign in to your Transparent Match account.">
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
           Email address

@@ -1,21 +1,21 @@
+export type AccountType = 'applicant' | 'recruiter';
+
 export type SignUpPayload = {
-  fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
-  role: 'candidate' | 'employer';
-  company?: string;
+  accountType: AccountType;
+  companyName?: string;
 };
 
 export type AuthContextValue = {
   userName: string | null;
   userEmail: string | null;
+  accountType: AccountType | null;
   isAuthenticated: boolean;
-  isEmailVerified: boolean;
   isLoading: boolean;
-  pendingEmail: string | null;
   signUp: (payload: SignUpPayload) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  resendVerification: () => Promise<void>;
-  refreshVerification: () => Promise<void>;
   signOutUser: () => Promise<void>;
 };
